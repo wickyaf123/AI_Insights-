@@ -7,9 +7,6 @@
       "runtime": "nodejs20.x",
       "maxDuration": 60
     }
-  },
-  "env": {
-    "GEMINI_API_KEY": "@gemini_api_key"
   }
 }
 
