@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { GoogleAIFileManager } from '@google/generative-ai/files';
 import path from 'path';
+import fs from 'fs';
 
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) {
@@ -67,9 +68,20 @@ async function uploadSportFiles(sport: string) {
     }
 
     console.log(`Uploading ${sport.toUpperCase()} files...`);
+    console.log(`Working directory: ${process.cwd()}`);
+    console.log(`Files to upload:`, files);
+    
     sportFileUris[sport] = [];
 
     for (const filePath of files) {
+      console.log(`Attempting to upload: ${filePath}`);
+      
+      // Check if file exists
+      if (!fs.existsSync(filePath)) {
+        console.error(`File not found: ${filePath}`);
+        throw new Error(`File not found: ${filePath}`);
+      }
+      
       const uploadResult = await fileManager.uploadFile(filePath, {
         mimeType: "text/csv",
         displayName: `${sport.toUpperCase()} - ${path.basename(filePath)}`,
