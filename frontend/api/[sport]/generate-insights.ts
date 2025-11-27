@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { generateSportInsights } from '../../src/services/multiSportGemini';
+import { generateSportInsights } from '../services/multiSportGemini';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Only allow POST requests
