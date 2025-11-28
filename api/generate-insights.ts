@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { generateInsights } from './_gemini.js';
+import { generateInsights } from './_gemini';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Only allow POST requests
