@@ -20,8 +20,8 @@ let teamStatsFileUri: string | null = null;
 async function uploadFiles() {
     try {
         // Paths to the CSV files - for Vercel, these need to be relative to the project root
-        const playerStatsPath = path.join(process.cwd(), 'data/NBA_PlayerStats.csv');
-        const teamStatsPath = path.join(process.cwd(), 'data/NBA_Team_Stats.csv');
+        const playerStatsPath = path.join(process.cwd(), 'frontend/data/NBA_PlayerStats.csv');
+        const teamStatsPath = path.join(process.cwd(), 'frontend/data/NBA_Team_Stats.csv');
 
         console.log('Uploading NBA files...');
 

@@ -30,9 +30,9 @@ const sportFileUris: SportFiles = {
 
 // File paths for each sport - using path.join for Vercel
 function getSportFilePaths(sport: string): string[] {
-  // In Vercel, process.cwd() points to the root directory (frontend)
+  // In Vercel, process.cwd() points to the root directory
   // Data folder is at frontend/data/
-  const basePath = path.join(process.cwd(), 'data');
+  const basePath = path.join(process.cwd(), 'frontend/data');
   
   const sportFilePaths: SportFiles = {
     nba: [
