@@ -126,11 +126,12 @@ function getSportPrompt(sport: string, query: any): string {
     You are an AI that generates SPECIFIC, DATA-DRIVEN insights for ${sport.toUpperCase()} using ACTUAL STATISTICS from the provided CSV files.
 
     CRITICAL REQUIREMENTS:
-    1. **USE REAL DATA ONLY** - Every insight MUST include specific numbers from the CSV files
-    2. **NO GENERIC TEXT** - Avoid phrases like "strong performance" without exact stats
-    3. **CITE ACTUAL STATISTICS** - Include exact averages, percentages, and recent data
-    4. **BE ULTRA-CONCISE** - Maximum 1-2 short sentences per insight
-    5. **FOCUS ON ACTIONABLE DATA** - Highlight trends, recent form, and matchup-specific stats
+    1. **USE REAL DATA WITH CONTEXT** - Every insight MUST include specific numbers AND their league ranking/percentile
+    2. **FORM ANALYSIS IS KEY** - Compare recent form windows (L5 vs L10 vs L15 where available) to identify significant changes
+    3. **ONLY HIGHLIGHT SIGNIFICANT CHANGES** - Ignore small differentials; focus on top/bottom performers and notable trends
+    4. **BE ULTRA-SPECIFIC** - Include rankings (e.g., "2nd in league", "top 10%", "ranks 18th out of 20")
+    5. **NO DUPLICATION** - Each section (insights, strengths, weaknesses) must have UNIQUE information
+    6. **ACTIONABLE DATA** - Focus on stats that matter for betting, fantasy, or genuine fan interest
     `;
 
   switch (sport) {
@@ -142,36 +143,69 @@ function getSportPrompt(sport: string, query: any): string {
     Team 2: ${query.team2 || 'N/A'}
 
     DATA ANALYSIS INSTRUCTIONS:
-    For EACH PLAYER, analyze from NBA_PlayerStats.csv:
-    - Quarter-by-quarter scoring patterns (avg_points_q1, q2, q3, q4)
-    - Recent form: last 5, 10, 15 games (points_per_game_last5, last10, last15)
-    - Rebounds, assists, 3-pointers made per game
-    - First half vs second half performance
 
-    For EACH TEAM, analyze from NBA_Team_Stats.csv:
-    - Quarter-by-quarter offensive/defensive performance
-    - Win percentages when leading/trailing
-    - Average win/loss margins
-    - Scoring differentials by quarter
+    For EACH PLAYER from NBA_PlayerStats.csv:
+    
+    **AI INSIGHTS (3-4 points):**
+    - Form trends: Compare L5 vs L10 vs L15 (e.g., "PPG: 28.4 (L5) vs 24.1 (L10) vs 22.8 (L15) - hot streak")
+    - Current hot/cold shooting with league context (e.g., "42% from 3PT (L5), ranks 3rd among guards")
+    - Usage/efficiency metrics with league ranking
+    - Key matchup advantages (e.g., "12.5 RPG vs West teams, top 5 in league")
+
+    **STRENGTHS (2 points):**
+    - Dominant statistical categories with league rankings (e.g., "32.1 PPG ranks 2nd in NBA")
+    - Elite efficiency metrics with percentiles (e.g., "TS% 67.2%, top 8% in league")
+
+    **WEAKNESSES (2 points):**
+    - Significant drops in key stats with rankings (e.g., "FT% 68.5%, ranks 147th")
+    - Notable form decline: L5 significantly worse than L10/L15 (e.g., "Assists down 27% from season avg")
+
+    For EACH TEAM from NBA_Team_Stats.csv:
+    
+    **AI INSIGHTS (3-5 points):**
+    - Offensive/defensive rating with league ranking (e.g., "115.2 ORTG, 3rd in NBA")
+    - Home/away splits (e.g., "12-2 at home vs 6-8 on road")
+    - Recent form with W-L (e.g., "Won 8 of last 10, averaging 118.5 PPG")
+    - Clutch performance (e.g., "7-3 in close games, 2nd in conference")
+    - Key matchup edges (e.g., "2nd in 3PT% vs opponent's 24th ranked 3PT defense")
+
+    **STRENGTHS (2-3 points):**
+    - Elite statistical rankings (e.g., "1st in pace, 3rd in 3PT%, 5th in rebounds")
+    - Dominant trends (e.g., "Winning by 14.2 pts at home, highest in division")
+
+    **WEAKNESSES (2-3 points):**
+    - Poor rankings in key categories (e.g., "28th in turnovers per game")
+    - Exploitable matchups (e.g., "Allow 118.5 PPG to top-10 offenses, worst in conference")
+
+    CRITICAL RULES:
+    ✅ ALWAYS include league rankings/percentiles
+    ✅ ALWAYS compare L5 vs L10 vs L15 for form analysis
+    ✅ ONLY mention significant changes (2+ pts, 5+ %, or top/bottom 25%)
+    ✅ Each section MUST be unique - no repeating stats
+    
+    ❌ NEVER use generic phrases without rankings
+    ❌ NEVER mention small differentials (< 2 pts or < 5%)
+    ❌ NEVER analyze quarter-by-quarter scoring
+    ❌ NEVER duplicate info between sections
 
     OUTPUT FORMAT - Return ONLY valid JSON (no markdown):
     {
       "players": {
         "Player Name": {
-          "insights": ["Stat with numbers", "Another data point"],
-          "strengths": ["Data-backed strength"],
-          "weaknesses": ["Weakness with stats"]
+          "insights": ["Stat with ranking", "Form comparison L5 vs L10 vs L15", "Key matchup stat with rank"],
+          "strengths": ["Elite stat with league ranking", "Another dominant category"],
+          "weaknesses": ["Poor stat with ranking", "Significant form drop"]
         }
       },
       "team1": {
-        "insights": ["Team stat with numbers"],
-        "strengths": ["Strength with data"],
-        "weaknesses": ["Weakness with stats"]
+        "insights": ["Key stat with rank", "Recent form W-L", "Matchup advantage"],
+        "strengths": ["Elite ranking", "Dominant trend"],
+        "weaknesses": ["Poor ranking", "Exploitable weakness"]
       },
       "team2": {
-        "insights": ["Team stat with numbers"],
-        "strengths": ["Strength with data"],
-        "weaknesses": ["Weakness with stats"]
+        "insights": ["Key stat with rank", "Recent form W-L", "Matchup advantage"],
+        "strengths": ["Elite ranking", "Dominant trend"],
+        "weaknesses": ["Poor ranking", "Exploitable weakness"]
       }
     }`;
 
@@ -183,36 +217,68 @@ function getSportPrompt(sport: string, query: any): string {
     Team 2: ${query.team2 || 'N/A'}
 
     DATA ANALYSIS INSTRUCTIONS:
-    For EACH PLAYER, analyze from AFL_players_1711.csv:
-    - Goals scored in last 5 matches (total_goals_scored_last_5_matches)
-    - Matches with at least 1 goal (matches_with_at_least_1_goal_last_5_matches)
-    - Average disposals per game (average_disposals_per_game_last_5_matches)
-    - Matches with 20+ disposals (matches_with_20_or_more_disposals_last_5_matches)
+    
+    For EACH PLAYER from AFL_players_1711.csv:
+    
+    **AI INSIGHTS (3-4 points):**
+    - Goal scoring form (e.g., "6 goals in L5 matches, scoring in 4 of 5 games")
+    - Disposal efficiency with ranking if available (e.g., "28.4 disposals/game in L5")
+    - Key trends in recent matches (e.g., "20+ disposals in 4 of L5 matches")
+    - Position-specific dominance (e.g., "Most goals by a midfielder in L5 rounds")
 
-    For EACH TEAM, analyze from AFL_teams_1711.csv:
-    - Points scored/conceded in last 5 matches
-    - Average score margin
-    - Home vs away performance
-    - Win percentages at home and away
+    **STRENGTHS (2 points):**
+    - Elite statistical categories (e.g., "Averaging 2.1 goals/game, top 5 in league")
+    - Consistent performance metrics (e.g., "20+ disposals in 12 of 15 matches")
+
+    **WEAKNESSES (2 points):**
+    - Scoring droughts or inconsistency (e.g., "Goalless in 3 of L5 matches")
+    - Below-average metrics (e.g., "14.2 disposals/game, below team average of 19.5")
+
+    For EACH TEAM from AFL_teams_1711.csv:
+    
+    **AI INSIGHTS (3-5 points):**
+    - Scoring average with context (e.g., "94.2 pts/game in L5, up from 86.1 season avg")
+    - Recent form (e.g., "4-1 in L5 matches, won last 3 straight")
+    - Home/away performance (e.g., "8-2 at home vs 3-7 away")
+    - Defensive metrics (e.g., "Conceding 78.4 pts/game, 3rd best defense")
+    - Scoring margins (e.g., "Winning by avg 22.6 pts, dominant form")
+
+    **STRENGTHS (2-3 points):**
+    - Elite rankings (e.g., "1st in scoring, 2nd in disposals")
+    - Strong home fortress (e.g., "Unbeaten in 9 home games")
+
+    **WEAKNESSES (2-3 points):**
+    - Poor away record (e.g., "1-6 away from home")
+    - Defensive concerns (e.g., "Conceding 95+ pts in L4 matches")
+
+    CRITICAL RULES:
+    ✅ ALWAYS provide context and rankings where possible
+    ✅ Focus on recent form (L5 matches is standard for AFL)
+    ✅ Home/away splits are crucial
+    ✅ Each section MUST be unique
+    
+    ❌ NEVER use generic phrases without specific numbers
+    ❌ NEVER mention insignificant changes
+    ❌ NEVER duplicate info between sections
 
     OUTPUT FORMAT - Return ONLY valid JSON (no markdown):
     {
       "players": {
         "Player Name": {
-          "insights": ["Stat with numbers"],
-          "strengths": ["Data-backed strength"],
-          "weaknesses": ["Weakness with stats"]
+          "insights": ["Goal form with numbers", "Disposal stats", "Recent trend", "Position dominance"],
+          "strengths": ["Elite category with ranking", "Consistent metric"],
+          "weaknesses": ["Inconsistency with data", "Below-average stat"]
         }
       },
       "team1": {
-        "insights": ["Team stat with numbers"],
-        "strengths": ["Strength with data"],
-        "weaknesses": ["Weakness with stats"]
+        "insights": ["Scoring avg with context", "Recent form W-L", "Home/away split", "Defensive metric"],
+        "strengths": ["Elite ranking", "Strong home record"],
+        "weaknesses": ["Poor away record", "Defensive concern"]
       },
       "team2": {
-        "insights": ["Team stat with numbers"],
-        "strengths": ["Strength with data"],
-        "weaknesses": ["Weakness with stats"]
+        "insights": ["Scoring avg with context", "Recent form W-L", "Home/away split", "Defensive metric"],
+        "strengths": ["Elite ranking", "Strong home record"],
+        "weaknesses": ["Poor away record", "Defensive concern"]
       }
     }`;
 
@@ -224,37 +290,69 @@ function getSportPrompt(sport: string, query: any): string {
     Team 2: ${query.team2 || 'N/A'}
 
     DATA ANALYSIS INSTRUCTIONS:
-    For EACH PLAYER, analyze from NRL_Players_recent_try_form141125.csv:
-    - Tries in last 5 games (tries_last_5_games)
-    - Try assists in last 5 games (try_assists_last_5_games)
-    - Games with try (games_with_try_last_5_games)
-    - Tries per game average (tries_per_game_last_5_games)
-    - Try assists per game (try_assists_per_game_last_5_games)
+    
+    For EACH PLAYER from NRL_Players_recent_try_form141125.csv:
+    
+    **AI INSIGHTS (3-4 points):**
+    - Try scoring form (e.g., "5 tries in L5 games, scoring in 4 of 5 matches")
+    - Try assist production (e.g., "7 try assists in L5, leading playmaker form")
+    - Scoring consistency (e.g., "Scored in 4 of L5 games vs 6 of L10")
+    - Position ranking if evident (e.g., "Most tries by a winger in last 5 rounds")
 
-    For EACH TEAM, analyze from NRL_TeamAnalysis.csv:
-    - Points scored/conceded in last 5 matches
-    - Average points per match
-    - Home vs away win percentages
-    - Venue-specific performance
+    **STRENGTHS (2 points):**
+    - Elite try-scoring with numbers (e.g., "1.2 tries/game in L5, top 5 in NRL")
+    - Playmaking ability (e.g., "1.4 try assists/game, leading all halfbacks")
+
+    **WEAKNESSES (2 points):**
+    - Try drought (e.g., "0 tries in L3 games after hot streak")
+    - Inconsistent production (e.g., "Only 2 tries in L5 vs 6 in previous 5")
+
+    For EACH TEAM from NRL_TeamAnalysis.csv:
+    
+    **AI INSIGHTS (3-5 points):**
+    - Points scored with context (e.g., "28.4 pts/game in L5, 4th highest in NRL")
+    - Recent form (e.g., "4-1 in L5, riding 4-game winning streak")
+    - Home/away splits (e.g., "9-2 at home vs 4-7 away")
+    - Defensive strength (e.g., "Conceding 16.2 pts/game, 2nd best defense")
+    - Venue-specific dominance (e.g., "7-0 at home venue, fortress mentality")
+
+    **STRENGTHS (2-3 points):**
+    - Elite rankings (e.g., "1st in points scored, 3rd in defense")
+    - Strong home record (e.g., "Unbeaten at home in 2024")
+
+    **WEAKNESSES (2-3 points):**
+    - Poor away form (e.g., "2-8 away from home, worst road record in top 8")
+    - Defensive lapses (e.g., "Conceded 30+ pts in 4 of L6 games")
+
+    CRITICAL RULES:
+    ✅ ALWAYS provide context and rankings where possible
+    ✅ Focus on recent form (L5 games is standard for NRL)
+    ✅ Try-scoring and try assists are the key metrics
+    ✅ Home/away and venue splits are crucial
+    ✅ Each section MUST be unique
+    
+    ❌ NEVER use generic phrases without specific numbers
+    ❌ NEVER mention insignificant changes
+    ❌ NEVER duplicate info between sections
 
     OUTPUT FORMAT - Return ONLY valid JSON (no markdown):
     {
       "players": {
         "Player Name": {
-          "insights": ["Stat with numbers"],
-          "strengths": ["Data-backed strength"],
-          "weaknesses": ["Weakness with stats"]
+          "insights": ["Try form with numbers", "Try assist production", "Scoring consistency", "Position ranking"],
+          "strengths": ["Elite try-scoring with numbers", "Playmaking ability"],
+          "weaknesses": ["Try drought with data", "Inconsistent production"]
         }
       },
       "team1": {
-        "insights": ["Team stat with numbers"],
-        "strengths": ["Strength with data"],
-        "weaknesses": ["Weakness with stats"]
+        "insights": ["Points with context", "Recent form W-L", "Home/away split", "Defensive strength"],
+        "strengths": ["Elite ranking", "Strong home record"],
+        "weaknesses": ["Poor away form", "Defensive lapse"]
       },
       "team2": {
-        "insights": ["Team stat with numbers"],
-        "strengths": ["Strength with data"],
-        "weaknesses": ["Weakness with stats"]
+        "insights": ["Points with context", "Recent form W-L", "Home/away split", "Defensive strength"],
+        "strengths": ["Elite ranking", "Strong home record"],
+        "weaknesses": ["Poor away form", "Defensive lapse"]
       }
     }`;
 
@@ -266,24 +364,58 @@ function getSportPrompt(sport: string, query: any): string {
 
     DATA ANALYSIS INSTRUCTIONS:
     For EACH TEAM, analyze from EPL_TeamData_121125.csv:
-    - Goals per half (avg_goals_first_half_per_match, avg_goals_second_half_per_match)
-    - Home vs away points (avg_points_per_home_match, avg_points_per_away_match)
-    - Recent form (wins_in_last_5_games, points_per_game_last_5_games)
-    - Win rates when leading/trailing at halftime
-    - Average winning/losing margins
-    - Shots, fouls, cards statistics
+
+    **AI INSIGHTS (4-5 points):**
+    - Goals scored with league ranking (e.g., "2.4 goals/game, 3rd in EPL")
+    - First half vs second half performance with context (e.g., "1.6 goals in 2nd half vs 0.8 in 1st, ranks 2nd for 2nd half goals")
+    - Recent form with context (e.g., "4 wins in L5, unbeaten in 8, currently on 6-game winning streak")
+    - Home/away splits with rankings (e.g., "2.1 pts/game at home (4th) vs 1.3 away (14th)")
+    - Key attacking/defensive metrics with rankings (e.g., "72% possession avg, 1st in league")
+    - Halftime leading/trailing performance (e.g., "Won 14 of 15 when leading at HT, 93% conversion rate")
+
+    **STRENGTHS (2-3 points):**
+    - Elite attacking metrics with rankings (e.g., "5.2 shots on target/game, 1st in EPL")
+    - Strong defensive stats with context (e.g., "0.6 goals conceded/game, 2nd best defense")
+    - Dominant home record or winning margins (e.g., "Won 12 of 14 home games, +24 goal diff")
+
+    **WEAKNESSES (2-3 points):**
+    - Poor rankings in key areas (e.g., "4.2 fouls/game, 18th in discipline")
+    - Exploitable defensive/offensive issues with rankings (e.g., "Concede 1.8 goals/game away, 16th worst")
+    - Form concerns (e.g., "0 wins in L5 away games, scored only 2 goals")
+
+    CRITICAL RULES FOR EPL:
+    ✅ ALWAYS include league rankings (e.g., "1st in EPL", "ranks 12th out of 20")
+    ✅ First/second half analysis IS relevant for soccer (unlike quarters in NBA)
+    ✅ Recent form (L5, L10) and current streaks are crucial
+    ✅ Home/away splits are very important - always include with context
+    ✅ Halftime leading/trailing stats provide great betting context
+    ✅ Each section MUST be unique - no repeating stats
+    
+    ❌ NEVER use generic phrases without rankings
+    ❌ NEVER mention insignificant differentials (< 0.3 goals or < 10%)
+    ❌ NEVER duplicate information between sections
+    ❌ NEVER omit league context/rankings
+
+    EXAMPLES:
+    ✅ "Averaging 2.6 goals/game (2nd in EPL), with 1.8 coming in 2nd half (1st in league for 2nd half goals)"
+    ✅ "Won 12 of 14 home games (86%, 3rd best) vs only 4 of 13 away (31%, 15th)"
+    ✅ "4 wins in L5 games, currently on 6-game winning streak, best form in last 10 years"
+    ✅ "14-1-0 record when leading at halftime (93% win rate, 2nd in EPL)"
+    ❌ "Good attacking team" (no numbers, no context)
+    ❌ "Slightly better at home" (too vague)
+    ❌ "Scores 0.2 more goals in 2nd half" (differential too small)
 
     OUTPUT FORMAT - Return ONLY valid JSON (no markdown):
     {
       "team1": {
-        "insights": ["Team stat with numbers"],
-        "strengths": ["Strength with data"],
-        "weaknesses": ["Weakness with stats"]
+        "insights": ["Goal scoring with rank", "Half performance with context", "Recent form streak", "Home/away split with ranks", "Key metric with ranking"],
+        "strengths": ["Elite attacking stat with rank", "Strong defensive stat with rank", "Dominant record"],
+        "weaknesses": ["Poor ranking in key area", "Exploitable issue with context", "Form concern with data"]
       },
       "team2": {
-        "insights": ["Team stat with numbers"],
-        "strengths": ["Strength with data"],
-        "weaknesses": ["Weakness with stats"]
+        "insights": ["Goal scoring with rank", "Half performance with context", "Recent form streak", "Home/away split with ranks", "Key metric with ranking"],
+        "strengths": ["Elite attacking stat with rank", "Strong defensive stat with rank", "Dominant record"],
+        "weaknesses": ["Poor ranking in key area", "Exploitable issue with context", "Form concern with data"]
       }
     }`;
 
@@ -296,38 +428,77 @@ function getSportPrompt(sport: string, query: any): string {
     Venue: ${query.venue || 'N/A'}
 
     DATA ANALYSIS INSTRUCTIONS:
-    For EACH PLAYER, analyze from IPL batting data:
-    - Strike rates vs different bowler types
-    - Recent batting performance (IPL_21_24_Batting.csv)
-    - Venue-specific performance
+    
+    For EACH PLAYER from IPL batting data:
+    
+    **AI INSIGHTS (3-4 points):**
+    - Recent strike rate with context (e.g., "SR 165 in last 5 innings, up from 142 season avg")
+    - Performance vs bowler types (e.g., "SR 180 vs pace, 125 vs spin - targets pace bowling")
+    - Venue-specific dominance (e.g., "Averages 52 at this venue vs 38 overall")
+    - Recent form comparison (e.g., "Scored 280 runs in L5 vs 180 in previous 5")
 
-    For VENUE analysis:
-    - Toss decisions and outcomes (VenueTossDecisions.csv)
-    - Venue characteristics (IPL_Venue_details.csv)
-    - Batting/bowling advantages
+    **STRENGTHS (2 points):**
+    - Elite strike rate or average with ranking (e.g., "SR 158, 3rd highest among openers")
+    - Dominance vs specific bowling (e.g., "SR 195 vs pace, highest in tournament")
+
+    **WEAKNESSES (2 points):**
+    - Struggle vs bowler type (e.g., "SR 98 vs spin, 15th percentile")
+    - Poor venue record (e.g., "Averages 18 at this venue in 8 innings")
+
+    For TEAMS and VENUE:
+    
+    **TEAM INSIGHTS (3-4 points each):**
+    - Team scoring rate at venue (e.g., "180.5 avg score at this venue, 2nd highest")
+    - Recent form (e.g., "Won 4 of L5 matches, chasing successfully in all 4")
+    - Batting/bowling lineup strengths with rankings
+    - Head-to-head record (e.g., "Won 7 of last 10 against opponent")
+
+    **VENUE INSIGHTS (3-4 points):**
+    - Average scores (e.g., "1st innings avg 185, 2nd innings avg 172 - batting first advantage")
+    - Toss significance (e.g., "Toss winners win 68% of matches, bat first 82% of time")
+    - Pace vs spin effectiveness (e.g., "Pace avg 26.5, spin avg 32.1 - pacers dominate")
+    - Recent trends (e.g., "Last 5 matches averaged 195 runs, up from 178 season avg")
+
+    CRITICAL RULES FOR IPL:
+    ✅ Strike rate is the key metric - always include with context
+    ✅ Bowler type matchups are crucial (pace vs spin)
+    ✅ Venue characteristics heavily influence outcomes
+    ✅ Toss and batting order decisions are very significant
+    ✅ Recent form windows matter (L5 vs season avg)
+    ✅ Each section MUST be unique
+    
+    ❌ NEVER use generic phrases without specific numbers
+    ❌ NEVER ignore venue context
+    ❌ NEVER duplicate info between sections
+
+    EXAMPLES:
+    ✅ "SR 172 in L5 innings vs 145 season avg - hot form with bat"
+    ✅ "SR 188 vs pace (2nd in IPL) but 112 vs spin (below avg) - targets pacers"
+    ✅ "Averages 58 at Wankhede in 12 innings, highest among active players"
+    ✅ "Toss winners bat first 85% of time and win 72% - toss crucial at this venue"
 
     OUTPUT FORMAT - Return ONLY valid JSON (no markdown):
     {
       "players": {
         "Player Name": {
-          "insights": ["Stat with numbers"],
-          "strengths": ["Data-backed strength"],
-          "weaknesses": ["Weakness with stats"]
+          "insights": ["Recent SR with context", "Bowler type matchup", "Venue performance", "Form comparison"],
+          "strengths": ["Elite SR with ranking", "Dominance vs bowling type"],
+          "weaknesses": ["Struggle vs type", "Poor venue record"]
         }
       },
       "team1": {
-        "insights": ["Team stat with numbers"],
-        "strengths": ["Strength with data"],
-        "weaknesses": ["Weakness with stats"]
+        "insights": ["Venue scoring rate", "Recent form", "Lineup strengths", "H2H record"],
+        "strengths": ["Elite ranking", "Strong record"],
+        "weaknesses": ["Poor matchup", "Weakness at venue"]
       },
       "team2": {
-        "insights": ["Team stat with numbers"],
-        "strengths": ["Strength with data"],
-        "weaknesses": ["Weakness with stats"]
+        "insights": ["Venue scoring rate", "Recent form", "Lineup strengths", "H2H record"],
+        "strengths": ["Elite ranking", "Strong record"],
+        "weaknesses": ["Poor matchup", "Weakness at venue"]
       },
       "venue": {
-        "insights": ["Venue stat with numbers"],
-        "characteristics": ["Venue characteristic with data"]
+        "insights": ["Average scores", "Toss significance", "Pace vs spin", "Recent trends"],
+        "characteristics": ["Batting/bowling advantage", "Key tactical factor"]
       }
     }`;
 
