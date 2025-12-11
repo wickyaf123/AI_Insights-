@@ -5,6 +5,7 @@ import { SportLayout } from "@/components/layouts/SportLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BentoCard } from "@/components/ui/bento-card";
+import { StreamingStatus } from "@/components/ui/streaming-status";
 import { useSidebar } from "@/components/ui/animated-sidebar";
 import { Download, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -128,7 +129,10 @@ const NBA = () => {
   const [selectedPlayers, setSelectedPlayers] = useState(["LeBron James", "Anthony Davis"]);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingStep, setStreamingStep] = useState(0);
   const [insightsData, setInsightsData] = useState<any>(null);
+  const [streamedText, setStreamedText] = useState("");
   const { toast } = useToast();
 
   const handlePlayerToggle = (playerName: string) => {
@@ -139,10 +143,35 @@ const NBA = () => {
     );
   };
 
+  const parsePartialJSON = (text: string) => {
+    // Try to parse complete JSON
+    try {
+      const cleaned = text.replace(/```json\n|\n```/g, '').trim();
+      return JSON.parse(cleaned);
+    } catch {
+      // If parsing fails, return null - we'll keep accumulating
+      return null;
+    }
+  };
+
   const handleGenerate = async () => {
     setIsGenerating(true);
+    setIsStreaming(true);
+    setStreamingStep(0);
+    setStreamedText("");
+    setInsightsData(null);
+    
     try {
-      const response = await fetch('/api/generate-insights', {
+      // Step 0: Initializing
+      setStreamingStep(0);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Step 1: Loading data
+      setStreamingStep(1);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Use streaming endpoint
+      const response = await fetch('/api/nba/generate-insights?stream=true', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -158,13 +187,85 @@ const NBA = () => {
         throw new Error('Failed to generate insights');
       }
 
-      const data = await response.json();
-      setInsightsData(data);
+      // Read the stream
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
 
-      toast({
-        title: "Insights Generated",
-        description: "AI has successfully analyzed the data.",
-      });
+      if (!reader) {
+        throw new Error('No reader available');
+      }
+
+      // Step 2: Processing with Gemini
+      setStreamingStep(2);
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      let accumulatedText = '';
+      console.log('[Frontend] Starting to read stream...');
+
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) {
+          console.log('[Frontend] Stream done');
+          break;
+        }
+
+        const chunk = decoder.decode(value, { stream: true });
+        console.log('[Frontend] Received raw chunk:', chunk.substring(0, 100));
+        
+        // Step 3: Streaming insights (set once when we start receiving data)
+        if (streamingStep < 3) {
+          setStreamingStep(3);
+        }
+        
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            
+            if (data === '[DONE]') {
+              console.log('[Frontend] Received [DONE] signal');
+              console.log('[Frontend] Final accumulated text length:', accumulatedText.length);
+              
+              // Parse the complete JSON
+              const finalData = parsePartialJSON(accumulatedText);
+              if (finalData) {
+                console.log('[Frontend] Successfully parsed final data');
+                setInsightsData(finalData);
+              } else {
+                console.error('[Frontend] Failed to parse final JSON');
+              }
+              
+              setIsStreaming(false);
+              setStreamingStep(4); // All steps complete
+              setStreamedText(""); // Clear streaming text to show formatted cards
+              
+              toast({
+                title: "Insights Generated",
+                description: "AI has successfully analyzed the data.",
+              });
+              
+              // Hide the streaming status after a brief moment
+              setTimeout(() => setStreamingStep(0), 2000);
+              return;
+            }
+
+            try {
+              const parsed = JSON.parse(data);
+              
+              // Accumulate chunks for real-time display
+              if (parsed.chunk) {
+                console.log('[Frontend] Received chunk:', parsed.chunk.substring(0, 50));
+                accumulatedText += parsed.chunk;
+                setStreamedText(accumulatedText);
+              }
+            } catch (e) {
+              console.log('[Frontend] Parse error:', e);
+            }
+          }
+        }
+      }
     } catch (error) {
       console.error("Error generating insights:", error);
       toast({
@@ -172,6 +273,8 @@ const NBA = () => {
         description: "Failed to generate insights. Please try again.",
         variant: "destructive",
       });
+      setIsStreaming(false);
+      setStreamingStep(0);
     } finally {
       setIsGenerating(false);
     }
@@ -205,13 +308,13 @@ const NBA = () => {
       const player1Data = {
         playerName: selectedPlayers[0],
         teamName: "Lakers", // This should ideally come from data or be dynamic
-        ...insightsData.players[selectedPlayers[0]]
+        ...(insightsData.players?.[selectedPlayers[0]] || {})
       };
 
       const player2Data = {
         playerName: selectedPlayers[1],
         teamName: "Mavericks", // This should ideally come from data or be dynamic
-        ...insightsData.players[selectedPlayers[1]]
+        ...(insightsData.players?.[selectedPlayers[1]] || {})
       };
 
       const pptx = generateNBAPPT({
@@ -269,6 +372,37 @@ const NBA = () => {
             <p className="text-muted-foreground">Compare players and teams head-to-head</p>
           </motion.div>
 
+          {/* Streaming Status Component */}
+          <StreamingStatus 
+            isStreaming={isStreaming || streamingStep > 0} 
+            currentStep={streamingStep}
+            sportName="NBA"
+          />
+
+          {/* Show streaming JSON in real-time */}
+          {isStreaming && streamedText && !insightsData && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="mb-8"
+            >
+              <BentoCard>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-2xl font-bold text-wicky-green flex items-center gap-2">
+                    <span className="animate-pulse">●</span> AI Generating Insights...
+                  </h2>
+                  <span className="text-sm text-muted-foreground">{streamedText.length} chars</span>
+                </div>
+                <div className="p-4 bg-black/30 rounded-lg font-mono text-xs text-green-400 whitespace-pre-wrap max-h-96 overflow-y-auto border border-wicky-green/20">
+                  {streamedText}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2 text-center">
+                  Parsing complete JSON when finished...
+                </p>
+              </BentoCard>
+            </motion.div>
+          )}
+
           {insightsData ? (
             <>
               {/* Team Analysis */}
@@ -278,35 +412,55 @@ const NBA = () => {
                   <div className="space-y-4">
                     <div>
                       <h3 className="text-lg font-semibold text-wicky-green-light mb-2">Team Analysis</h3>
-                      <p className="text-sm text-muted-foreground mb-3">AI Insights</p>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        AI Insights {isStreaming && <span className="animate-pulse text-wicky-green ml-2">● Streaming...</span>}
+                      </p>
                       <ul className="space-y-2">
-                        {insightsData.team1.insights.map((insight: string, i: number) => (
-                          <li key={i} className="text-sm flex items-start gap-2">
-                            <span className="text-wicky-green">•</span>
+                        {insightsData.team1?.insights?.map((insight: string, i: number) => (
+                          <motion.li 
+                            key={i} 
+                            className="text-sm flex items-start gap-3"
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.1 }}
+                          >
+                            <span className="text-wicky-green font-bold min-w-[24px]">{i + 1}.</span>
                             <span>{insight}</span>
-                          </li>
+                          </motion.li>
                         ))}
                       </ul>
                     </div>
                     <div>
                       <h4 className="text-success font-semibold mb-2">Strengths</h4>
                       <ul className="space-y-1">
-                        {insightsData.team1.strengths.map((strength: string, i: number) => (
-                          <li key={i} className="text-sm flex items-start gap-2">
-                            <span className="text-success">✓</span>
+                        {insightsData.team1?.strengths?.map((strength: string, i: number) => (
+                          <motion.li 
+                            key={i} 
+                            className="text-sm flex items-start gap-3"
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.1 }}
+                          >
+                            <span className="text-wicky-green font-bold min-w-[24px]">{i + 1}.</span>
                             <span>{strength}</span>
-                          </li>
+                          </motion.li>
                         ))}
                       </ul>
                     </div>
                     <div>
                       <h4 className="text-warning font-semibold mb-2">Weaknesses</h4>
                       <ul className="space-y-1">
-                        {insightsData.team1.weaknesses.map((weakness: string, i: number) => (
-                          <li key={i} className="text-sm flex items-start gap-2">
-                            <span className="text-warning">⚠</span>
+                        {insightsData.team1?.weaknesses?.map((weakness: string, i: number) => (
+                          <motion.li 
+                            key={i} 
+                            className="text-sm flex items-start gap-3"
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.1 }}
+                          >
+                            <span className="text-wicky-green font-bold min-w-[24px]">{i + 1}.</span>
                             <span>{weakness}</span>
-                          </li>
+                          </motion.li>
                         ))}
                       </ul>
                     </div>
@@ -318,35 +472,55 @@ const NBA = () => {
                   <div className="space-y-4">
                     <div>
                       <h3 className="text-lg font-semibold text-wicky-green-light mb-2">Team Analysis</h3>
-                      <p className="text-sm text-muted-foreground mb-3">AI Insights</p>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        AI Insights {isStreaming && <span className="animate-pulse text-wicky-green ml-2">● Streaming...</span>}
+                      </p>
                       <ul className="space-y-2">
-                        {insightsData.team2.insights.map((insight: string, i: number) => (
-                          <li key={i} className="text-sm flex items-start gap-2">
-                            <span className="text-wicky-green">•</span>
+                        {insightsData.team2?.insights?.map((insight: string, i: number) => (
+                          <motion.li 
+                            key={i} 
+                            className="text-sm flex items-start gap-3"
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.1 }}
+                          >
+                            <span className="text-wicky-green font-bold min-w-[24px]">{i + 1}.</span>
                             <span>{insight}</span>
-                          </li>
+                          </motion.li>
                         ))}
                       </ul>
                     </div>
                     <div>
                       <h4 className="text-success font-semibold mb-2">Strengths</h4>
                       <ul className="space-y-1">
-                        {insightsData.team2.strengths.map((strength: string, i: number) => (
-                          <li key={i} className="text-sm flex items-start gap-2">
-                            <span className="text-success">✓</span>
+                        {insightsData.team2?.strengths?.map((strength: string, i: number) => (
+                          <motion.li 
+                            key={i} 
+                            className="text-sm flex items-start gap-3"
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.1 }}
+                          >
+                            <span className="text-wicky-green font-bold min-w-[24px]">{i + 1}.</span>
                             <span>{strength}</span>
-                          </li>
+                          </motion.li>
                         ))}
                       </ul>
                     </div>
                     <div>
                       <h4 className="text-warning font-semibold mb-2">Weaknesses</h4>
                       <ul className="space-y-1">
-                        {insightsData.team2.weaknesses.map((weakness: string, i: number) => (
-                          <li key={i} className="text-sm flex items-start gap-2">
-                            <span className="text-warning">⚠</span>
+                        {insightsData.team2?.weaknesses?.map((weakness: string, i: number) => (
+                          <motion.li 
+                            key={i} 
+                            className="text-sm flex items-start gap-3"
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.1 }}
+                          >
+                            <span className="text-wicky-green font-bold min-w-[24px]">{i + 1}.</span>
                             <span>{weakness}</span>
-                          </li>
+                          </motion.li>
                         ))}
                       </ul>
                     </div>
@@ -355,22 +529,21 @@ const NBA = () => {
               </div>
 
               {/* Player Comparison */}
-              {selectedPlayers.length > 0 && (
+              {selectedPlayers.length > 0 && insightsData.players && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 auto-rows-fr">
-                  {selectedPlayers.map((playerName, index) => (
-                    <motion.div
-                      key={playerName}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.1 * index }}
-                    >
+                  {selectedPlayers.map((playerName, index) => {
+                    const playerData = insightsData.players?.[playerName];
+                    if (!playerData) return null; // Skip if player data not available yet
+                    
+                    return (
                       <PlayerCard
-                        playerName={playerName}
-                        teamName={index % 2 === 0 ? "Lakers" : "Mavericks"} // Placeholder logic for team assignment
-                        {...insightsData.players[playerName]}
-                      />
-                    </motion.div>
-                  ))}
+                        key={playerName}
+                          playerName={playerName}
+                          teamName={index % 2 === 0 ? "Lakers" : "Mavericks"} // Placeholder logic for team assignment
+                          {...playerData}
+                        />
+                    );
+                  })}
                 </div>
               )}
             </>

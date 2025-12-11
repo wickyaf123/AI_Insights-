@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { TrendingUp, TrendingDown, AlertTriangle } from "lucide-react";
+import { BentoCard } from "@/components/ui/bento-card";
 
 interface PlayerCardProps {
   playerName: string;
@@ -11,11 +12,7 @@ interface PlayerCardProps {
 
 export const PlayerCard = ({ playerName, teamName, insights, strengths, weaknesses }: PlayerCardProps) => {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="bg-card border border-border rounded-xl p-6 space-y-6 h-full flex flex-col"
-    >
+    <BentoCard enableTilt={false}>
       <div>
         <h2 className="text-2xl font-bold text-wicky-green mb-1">Player Analysis: {playerName}</h2>
         <p className="text-sm text-muted-foreground">{teamName}</p>
@@ -33,9 +30,9 @@ export const PlayerCard = ({ playerName, teamName, insights, strengths, weakness
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.1 }}
-              className="text-sm text-muted-foreground flex items-start gap-2"
+              className="text-sm text-muted-foreground flex items-start gap-3"
             >
-              <span className="text-wicky-green mt-1">•</span>
+              <span className="text-wicky-green font-bold min-w-[24px]">{index + 1}.</span>
               <span>
                 {insight.split(/(\d+\.?\d*)/g).map((part, idx) => 
                   /\d+\.?\d*/.test(part) ? (
@@ -61,9 +58,9 @@ export const PlayerCard = ({ playerName, teamName, insights, strengths, weakness
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.1 }}
-              className="text-sm flex items-start gap-2"
+              className="text-sm flex items-start gap-3"
             >
-              <span className="text-success mt-1">✓</span>
+              <span className="text-wicky-green font-bold min-w-[24px]">{index + 1}.</span>
               <span>
                 {strength.split(/(\d+\.?\d*)/g).map((part, idx) => 
                   /\d+\.?\d*/.test(part) ? (
@@ -89,9 +86,9 @@ export const PlayerCard = ({ playerName, teamName, insights, strengths, weakness
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.1 }}
-              className="text-sm flex items-start gap-2"
+              className="text-sm flex items-start gap-3"
             >
-              <span className="text-warning mt-1">⚠</span>
+              <span className="text-wicky-green font-bold min-w-[24px]">{index + 1}.</span>
               <span>
                 {weakness.split(/(\d+\.?\d*)/g).map((part, idx) => 
                   /\d+\.?\d*/.test(part) ? (
@@ -103,6 +100,6 @@ export const PlayerCard = ({ playerName, teamName, insights, strengths, weakness
           ))}
         </ul>
       </div>
-    </motion.div>
+    </BentoCard>
   );
 };

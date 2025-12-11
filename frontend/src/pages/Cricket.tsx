@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BentoCard } from "@/components/ui/bento-card";
+import { StreamingStatus } from "@/components/ui/streaming-status";
 import { TrendingUp, Target, AlertTriangle, Download } from "lucide-react";
 import { useSidebar } from "@/components/ui/animated-sidebar";
 import { useToast } from "@/hooks/use-toast";
@@ -118,13 +119,35 @@ const Cricket = () => {
   const [selectedPlayer, setSelectedPlayer] = useState("Venkatesh Iyer");
   const [isDownloading, setIsDownloading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingStep, setStreamingStep] = useState(0);
   const [insightsData, setInsightsData] = useState<any>(null);
+  const [streamedText, setStreamedText] = useState("");
   const { toast } = useToast();
+
+  const parsePartialJSON = (text: string) => {
+    try {
+      const cleaned = text.replace(/```json\n|\n```/g, '').trim();
+      return JSON.parse(cleaned);
+    } catch {
+      return null;
+    }
+  };
 
   const handleGenerate = async () => {
     setIsGenerating(true);
+    setIsStreaming(true);
+    setStreamingStep(0);
+    setStreamedText("");
+    setInsightsData(null);
+    
     try {
-      const response = await fetch('/api/ipl/generate-insights', {
+      setStreamingStep(0);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      setStreamingStep(1);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      const response = await fetch('/api/ipl/generate-insights?stream=true', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -133,7 +156,7 @@ const Cricket = () => {
           selectedPlayers: [selectedPlayer],
           team1: selectedTeam,
           team2: selectedOpposition,
-          venue: "Wankhede Stadium" // You can make this dynamic
+          venue: "Wankhede Stadium"
         }),
       });
 
@@ -141,15 +164,76 @@ const Cricket = () => {
         throw new Error('Failed to generate insights');
       }
 
-      const data = await response.json();
-      setInsightsData(data);
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
 
-      toast({
-        title: "Insights Generated",
-        description: "AI has successfully analyzed the IPL data.",
-      });
+      if (!reader) {
+        throw new Error('No reader available');
+      }
+
+      setStreamingStep(2);
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      let accumulatedText = '';
+      console.log('[Cricket] Starting to read stream...');
+
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) {
+          console.log('[Cricket] Stream done');
+          break;
+        }
+
+        const chunk = decoder.decode(value, { stream: true });
+        
+        if (streamingStep < 3) {
+          setStreamingStep(3);
+        }
+        
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            
+            if (data === '[DONE]') {
+              console.log('[Cricket] Received [DONE] signal');
+              
+              const finalData = parsePartialJSON(accumulatedText);
+              if (finalData) {
+                console.log('[Cricket] Successfully parsed final data');
+                setInsightsData(finalData);
+              }
+              
+              setIsStreaming(false);
+              setStreamingStep(4);
+              setStreamedText(""); // Clear to show formatted cards
+              
+              toast({
+                title: "Insights Generated",
+                description: "AI has successfully analyzed the IPL data.",
+              });
+              
+              setTimeout(() => setStreamingStep(0), 2000);
+              return;
+            }
+
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.chunk) {
+                accumulatedText += parsed.chunk;
+                setStreamedText(accumulatedText);
+              }
+            } catch (e) {
+              console.log('[Cricket] Parse error:', e);
+            }
+          }
+        }
+      }
     } catch (error) {
       console.error("Error generating insights:", error);
+      setStreamingStep(0);
       toast({
         title: "Generation Failed",
         description: "Failed to generate insights. Please try again.",
@@ -157,6 +241,7 @@ const Cricket = () => {
       });
     } finally {
       setIsGenerating(false);
+      setIsStreaming(false);
     }
   };
 
@@ -312,6 +397,37 @@ const Cricket = () => {
             <h1 className="text-4xl font-bold text-wicky-green glow-green">Cricket Opposition Planning</h1>
             <p className="text-muted-foreground">Analyze player performance and opposition strategies</p>
           </motion.div>
+
+          {/* Streaming Status Component */}
+          <StreamingStatus 
+            isStreaming={isStreaming || streamingStep > 0} 
+            currentStep={streamingStep}
+            sportName="Cricket"
+          />
+
+          {/* Show streaming JSON in real-time */}
+          {isStreaming && streamedText && !insightsData && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="mb-8"
+            >
+              <BentoCard>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-2xl font-bold text-wicky-green flex items-center gap-2">
+                    <span className="animate-pulse">●</span> AI Generating Insights...
+                  </h2>
+                  <span className="text-sm text-muted-foreground">{streamedText.length} chars</span>
+                </div>
+                <div className="p-4 bg-black/30 rounded-lg font-mono text-xs text-green-400 whitespace-pre-wrap max-h-96 overflow-y-auto border border-wicky-green/20">
+                  {streamedText}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2 text-center">
+                  Parsing complete JSON when finished...
+                </p>
+              </BentoCard>
+            </motion.div>
+          )}
 
           {/* Player Analysis Header */}
           <BentoCard delay={0.2} enableTilt={false}>

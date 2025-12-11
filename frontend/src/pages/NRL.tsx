@@ -4,7 +4,8 @@ import { SportLayout } from "@/components/layouts/SportLayout";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { BentoCard } from "@/components/ui/bento-card";
-import { TrendingUp, Target, AlertTriangle, Download, Loader2 } from "lucide-react";
+import { StreamingStatus } from "@/components/ui/streaming-status";
+import { TrendingUp, AlertTriangle, Download, Loader2 } from "lucide-react";
 import { useSidebar } from "@/components/ui/animated-sidebar";
 import { useToast } from "@/hooks/use-toast";
 
@@ -13,8 +14,8 @@ const NRLSidebar = ({
   setSelectedTeam,
   selectedOpposition,
   setSelectedOpposition,
-  selectedPlayer,
-  setSelectedPlayer,
+  selectedPlayers,
+  onPlayerToggle,
   onGenerate,
   onDownload,
   isDownloading,
@@ -23,6 +24,15 @@ const NRLSidebar = ({
   const { open } = useSidebar();
 
   if (!open) return null;
+
+  const allPlayers = [
+    "James Tedesco",
+    "Nicho Hynes",
+    "Mitchell Moses",
+    "Nathan Cleary",
+    "Cameron Munster",
+    "Jahrome Hughes"
+  ];
 
   return (
     <div className="space-y-4 animate-in fade-in-50 duration-300">
@@ -58,18 +68,50 @@ const NRLSidebar = ({
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs text-muted-foreground">Opposition Player</label>
-            <Select value={selectedPlayer} onValueChange={setSelectedPlayer}>
+            <label className="text-xs text-muted-foreground">Select Players</label>
+            <Select
+              value={selectedPlayers[selectedPlayers.length - 1] || ""}
+              onValueChange={(value) => {
+                if (!selectedPlayers.includes(value)) {
+                  onPlayerToggle(value);
+                }
+              }}
+            >
               <SelectTrigger className="bg-secondary/50 border-border h-9">
-                <SelectValue />
+                <SelectValue placeholder="Add a player" />
               </SelectTrigger>
               <SelectContent className="z-[200] bg-card border-border">
-                <SelectItem value="James Tedesco">James Tedesco</SelectItem>
-                <SelectItem value="Nicho Hynes">Nicho Hynes</SelectItem>
-                <SelectItem value="Mitchell Moses">Mitchell Moses</SelectItem>
+                {allPlayers.map((player) => (
+                  <SelectItem
+                    key={player}
+                    value={player}
+                    disabled={selectedPlayers.includes(player)}
+                  >
+                    {player}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
+
+          {selectedPlayers.length > 0 && (
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">Selected Players</label>
+              <div className="space-y-1">
+                {selectedPlayers.map((player: string) => (
+                  <div key={player} className="flex items-center justify-between bg-secondary/30 px-3 py-2 rounded-md">
+                    <span className="text-sm">{player}</span>
+                    <button
+                      onClick={() => onPlayerToggle(player)}
+                      className="text-xs text-danger hover:text-danger/80"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -113,22 +155,52 @@ const NRLSidebar = ({
 const NRL = () => {
   const [selectedTeam, setSelectedTeam] = useState("Penrith Panthers");
   const [selectedOpposition, setSelectedOpposition] = useState("Sydney Roosters");
-  const [selectedPlayer, setSelectedPlayer] = useState("James Tedesco");
+  const [selectedPlayers, setSelectedPlayers] = useState(["James Tedesco", "Nicho Hynes"]);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingStep, setStreamingStep] = useState(0);
   const [insightsData, setInsightsData] = useState<any>(null);
+  const [streamedText, setStreamedText] = useState("");
   const { toast } = useToast();
+
+  const handlePlayerToggle = (playerName: string) => {
+    setSelectedPlayers((prev) =>
+      prev.includes(playerName)
+        ? prev.filter((p) => p !== playerName)
+        : [...prev, playerName]
+    );
+  };
+
+  const parsePartialJSON = (text: string) => {
+    try {
+      const cleaned = text.replace(/```json\n|\n```/g, '').trim();
+      return JSON.parse(cleaned);
+    } catch {
+      return null;
+    }
+  };
 
   const handleGenerate = async () => {
     setIsGenerating(true);
+    setIsStreaming(true);
+    setStreamingStep(0);
+    setStreamedText("");
+    setInsightsData(null);
+    
     try {
-      const response = await fetch('/api/nrl/generate-insights', {
+      setStreamingStep(0);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      setStreamingStep(1);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      const response = await fetch('/api/nrl/generate-insights?stream=true', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          selectedPlayers: [selectedPlayer],
+          selectedPlayers: selectedPlayers,
           team1: selectedTeam,
           team2: selectedOpposition
         }),
@@ -138,15 +210,77 @@ const NRL = () => {
         throw new Error('Failed to generate insights');
       }
 
-      const data = await response.json();
-      setInsightsData(data);
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
 
-      toast({
-        title: "Insights Generated",
-        description: "AI has successfully analyzed the NRL data.",
-      });
+      if (!reader) {
+        throw new Error('No reader available');
+      }
+
+      setStreamingStep(2);
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      let accumulatedText = '';
+      console.log('[NRL] Starting to read stream...');
+
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) {
+          console.log('[NRL] Stream done');
+          break;
+        }
+
+        const chunk = decoder.decode(value, { stream: true });
+        
+        if (streamingStep < 3) {
+          setStreamingStep(3);
+        }
+        
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            
+            if (data === '[DONE]') {
+              console.log('[NRL] Received [DONE] signal');
+              
+              const finalData = parsePartialJSON(accumulatedText);
+              if (finalData) {
+                console.log('[NRL] Successfully parsed final data');
+                setInsightsData(finalData);
+              }
+              
+              setIsStreaming(false);
+              setStreamingStep(4);
+              setStreamedText(""); // Clear to show formatted cards
+              
+              toast({
+                title: "Insights Generated",
+                description: "AI has successfully analyzed the NRL data.",
+              });
+              
+              setTimeout(() => setStreamingStep(0), 2000);
+              return;
+            }
+
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.chunk) {
+                accumulatedText += parsed.chunk;
+                setStreamedText(accumulatedText);
+              }
+            } catch (e) {
+              console.log('[NRL] Parse error:', e);
+            }
+          }
+        }
+      }
     } catch (error) {
       console.error("Error generating insights:", error);
+      setIsStreaming(false);
+      setStreamingStep(0);
       toast({
         title: "Generation Failed",
         description: "Failed to generate insights. Please try again.",
@@ -173,19 +307,7 @@ const NRL = () => {
     }, 2000);
   };
 
-  // Use real data from API or fallback to placeholder
-  const insights = insightsData?.players?.[selectedPlayer]?.insights || [
-    `${selectedPlayer} - Generate insights to see AI analysis`,
-    `${selectedOpposition} vs ${selectedTeam} - Click Generate Insights`,
-  ];
-
-  const strengths = insightsData?.players?.[selectedPlayer]?.strengths || [
-    `Generate insights to see player strengths`,
-  ];
-
-  const weaknesses = insightsData?.players?.[selectedPlayer]?.weaknesses || [
-    `Generate insights to see areas for improvement`,
-  ];
+  // No need for fallback data - we'll show a message if no data
 
   return (
     <SportLayout
@@ -195,8 +317,8 @@ const NRL = () => {
           setSelectedTeam={setSelectedTeam}
           selectedOpposition={selectedOpposition}
           setSelectedOpposition={setSelectedOpposition}
-          selectedPlayer={selectedPlayer}
-          setSelectedPlayer={setSelectedPlayer}
+          selectedPlayers={selectedPlayers}
+          onPlayerToggle={handlePlayerToggle}
           onGenerate={handleGenerate}
           onDownload={handleDownload}
           isDownloading={isDownloading}
@@ -214,118 +336,315 @@ const NRL = () => {
             NRL Match Analysis
           </h1>
           <p className="text-muted-foreground">
-            {selectedTeam} vs {selectedOpposition} - Player Focus: {selectedPlayer}
+            {selectedTeam} vs {selectedOpposition}
           </p>
         </motion.div>
 
-        <div className="grid grid-cols-1 gap-6">
-          {/* AI Insights Card */}
-          <BentoCard enableParticles enableMagnetism clickEffect>
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="p-6 space-y-6"
-            >
-              <div>
-                <h2 className="text-2xl font-bold text-wicky-green mb-4">AI Insights</h2>
-                <ul className="space-y-3">
-                  {insights.map((insight, index) => (
-                    <motion.li
-                      key={index}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                      className="text-sm text-muted-foreground flex items-start gap-2"
-                    >
-                      <span className="text-wicky-green mt-1">•</span>
-                      <span>
-                        {insight.split(/(\d+\.?\d*)/g).map((part, idx) =>
-                          /\d+\.?\d*/.test(part) ? (
-                            <span key={idx} className="text-wicky-green font-bold">{part}</span>
-                          ) : part
-                        )}
-                      </span>
-                    </motion.li>
-                  ))}
-                </ul>
-              </div>
-            </motion.div>
-          </BentoCard>
+        {/* Streaming Status Component */}
+        <StreamingStatus 
+          isStreaming={isStreaming || streamingStep > 0} 
+          currentStep={streamingStep}
+          sportName="NRL"
+        />
 
-          {/* Strengths Card */}
-          <BentoCard enableParticles enableMagnetism clickEffect>
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="p-6 space-y-6"
-            >
-              <div>
-                <h2 className="text-2xl font-bold text-success flex items-center gap-2 mb-4">
-                  <TrendingUp className="w-6 h-6" />
-                  Strengths
+        {/* Show streaming JSON in real-time */}
+        {isStreaming && streamedText && !insightsData && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mb-8"
+          >
+            <BentoCard>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold text-wicky-green flex items-center gap-2">
+                  <span className="animate-pulse">●</span> AI Generating Insights...
                 </h2>
-                <ul className="space-y-3">
-                  {strengths.map((strength, index) => (
-                    <motion.li
-                      key={index}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                      className="text-sm flex items-start gap-2"
-                    >
-                      <span className="text-success mt-1">✓</span>
-                      <span>
-                        {strength.split(/(\d+\.?\d*)/g).map((part, idx) =>
-                          /\d+\.?\d*/.test(part) ? (
-                            <span key={idx} className="text-wicky-green font-bold">{part}</span>
-                          ) : part
-                        )}
-                      </span>
-                    </motion.li>
-                  ))}
-                </ul>
+                <span className="text-sm text-muted-foreground">{streamedText.length} chars</span>
               </div>
-            </motion.div>
-          </BentoCard>
+              <div className="p-4 bg-black/30 rounded-lg font-mono text-xs text-green-400 whitespace-pre-wrap max-h-96 overflow-y-auto border border-wicky-green/20">
+                {streamedText}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2 text-center">
+                Parsing complete JSON when finished...
+              </p>
+            </BentoCard>
+          </motion.div>
+        )}
 
-          {/* Weaknesses Card */}
-          <BentoCard enableParticles enableMagnetism clickEffect>
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="p-6 space-y-6"
-            >
-              <div>
-                <h2 className="text-2xl font-bold text-warning flex items-center gap-2 mb-4">
-                  <AlertTriangle className="w-6 h-6" />
-                  Areas for Improvement
-                </h2>
-                <ul className="space-y-3">
-                  {weaknesses.map((weakness, index) => (
-                    <motion.li
-                      key={index}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                      className="text-sm flex items-start gap-2"
-                    >
-                      <span className="text-warning mt-1">⚠</span>
-                      <span>
-                        {weakness.split(/(\d+\.?\d*)/g).map((part, idx) =>
-                          /\d+\.?\d*/.test(part) ? (
-                            <span key={idx} className="text-wicky-green font-bold">{part}</span>
-                          ) : part
-                        )}
-                      </span>
-                    </motion.li>
-                  ))}
-                </ul>
+        {insightsData ? (
+          <>
+            {/* Team Analysis */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 auto-rows-fr">
+              <BentoCard delay={0.3} enableTilt={false}>
+                <h2 className="text-2xl font-bold text-wicky-green mb-4">{selectedTeam}</h2>
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-wicky-green-light mb-2">Team Analysis</h3>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      AI Insights {isStreaming && <span className="animate-pulse text-wicky-green ml-2">● Streaming...</span>}
+                    </p>
+                    <ul className="space-y-2">
+                      {insightsData.team1?.insights?.map((insight: string, i: number) => (
+                        <motion.li 
+                          key={i} 
+                          className="text-sm flex items-start gap-3"
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.1 }}
+                        >
+                          <span className="text-wicky-green font-bold min-w-[24px]">{i + 1}.</span>
+                          <span>
+                            {insight.split(/(\d+\.?\d*)/g).map((part, idx) =>
+                              /\d+\.?\d*/.test(part) ? (
+                                <span key={idx} className="text-wicky-green font-bold">{part}</span>
+                              ) : part
+                            )}
+                          </span>
+                        </motion.li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h4 className="text-success font-semibold mb-2 flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4" />
+                      Strengths
+                    </h4>
+                    <ul className="space-y-1">
+                      {insightsData.team1?.strengths?.map((strength: string, i: number) => (
+                        <motion.li 
+                          key={i} 
+                          className="text-sm flex items-start gap-3"
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.1 }}
+                        >
+                          <span className="text-success min-w-[24px]">✓</span>
+                          <span>
+                            {strength.split(/(\d+\.?\d*)/g).map((part, idx) =>
+                              /\d+\.?\d*/.test(part) ? (
+                                <span key={idx} className="text-wicky-green font-bold">{part}</span>
+                              ) : part
+                            )}
+                          </span>
+                        </motion.li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h4 className="text-warning font-semibold mb-2 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4" />
+                      Weaknesses
+                    </h4>
+                    <ul className="space-y-1">
+                      {insightsData.team1?.weaknesses?.map((weakness: string, i: number) => (
+                        <motion.li 
+                          key={i} 
+                          className="text-sm flex items-start gap-3"
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.1 }}
+                        >
+                          <span className="text-warning min-w-[24px]">⚠</span>
+                          <span>
+                            {weakness.split(/(\d+\.?\d*)/g).map((part, idx) =>
+                              /\d+\.?\d*/.test(part) ? (
+                                <span key={idx} className="text-wicky-green font-bold">{part}</span>
+                              ) : part
+                            )}
+                          </span>
+                        </motion.li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </BentoCard>
+
+              <BentoCard delay={0.4} enableTilt={false}>
+                <h2 className="text-2xl font-bold text-wicky-green mb-4">{selectedOpposition}</h2>
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-wicky-green-light mb-2">Team Analysis</h3>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      AI Insights {isStreaming && <span className="animate-pulse text-wicky-green ml-2">● Streaming...</span>}
+                    </p>
+                    <ul className="space-y-2">
+                      {insightsData.team2?.insights?.map((insight: string, i: number) => (
+                        <motion.li 
+                          key={i} 
+                          className="text-sm flex items-start gap-3"
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.1 }}
+                        >
+                          <span className="text-wicky-green font-bold min-w-[24px]">{i + 1}.</span>
+                          <span>
+                            {insight.split(/(\d+\.?\d*)/g).map((part, idx) =>
+                              /\d+\.?\d*/.test(part) ? (
+                                <span key={idx} className="text-wicky-green font-bold">{part}</span>
+                              ) : part
+                            )}
+                          </span>
+                        </motion.li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h4 className="text-success font-semibold mb-2 flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4" />
+                      Strengths
+                    </h4>
+                    <ul className="space-y-1">
+                      {insightsData.team2?.strengths?.map((strength: string, i: number) => (
+                        <motion.li 
+                          key={i} 
+                          className="text-sm flex items-start gap-3"
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.1 }}
+                        >
+                          <span className="text-success min-w-[24px]">✓</span>
+                          <span>
+                            {strength.split(/(\d+\.?\d*)/g).map((part, idx) =>
+                              /\d+\.?\d*/.test(part) ? (
+                                <span key={idx} className="text-wicky-green font-bold">{part}</span>
+                              ) : part
+                            )}
+                          </span>
+                        </motion.li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h4 className="text-warning font-semibold mb-2 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4" />
+                      Weaknesses
+                    </h4>
+                    <ul className="space-y-1">
+                      {insightsData.team2?.weaknesses?.map((weakness: string, i: number) => (
+                        <motion.li 
+                          key={i} 
+                          className="text-sm flex items-start gap-3"
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.1 }}
+                        >
+                          <span className="text-warning min-w-[24px]">⚠</span>
+                          <span>
+                            {weakness.split(/(\d+\.?\d*)/g).map((part, idx) =>
+                              /\d+\.?\d*/.test(part) ? (
+                                <span key={idx} className="text-wicky-green font-bold">{part}</span>
+                              ) : part
+                            )}
+                          </span>
+                        </motion.li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </BentoCard>
+            </div>
+
+            {/* Player Comparison */}
+            {selectedPlayers.length > 0 && insightsData.players && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 auto-rows-fr">
+                {selectedPlayers.map((playerName, index) => {
+                  const playerData = insightsData.players?.[playerName];
+                  if (!playerData) return null;
+                  
+                  return (
+                    <BentoCard key={playerName} delay={0.5 + index * 0.1} enableTilt={false}>
+                      <h2 className="text-2xl font-bold text-wicky-green mb-4">{playerName}</h2>
+                      <div className="space-y-4">
+                        <div>
+                          <h3 className="text-lg font-semibold text-wicky-green-light mb-2">Player Analysis</h3>
+                          <p className="text-sm text-muted-foreground mb-3">
+                            AI Insights {isStreaming && <span className="animate-pulse text-wicky-green ml-2">● Streaming...</span>}
+                          </p>
+                          <ul className="space-y-2">
+                            {playerData.insights?.map((insight: string, i: number) => (
+                              <motion.li 
+                                key={i} 
+                                className="text-sm flex items-start gap-3"
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: i * 0.1 }}
+                              >
+                                <span className="text-wicky-green font-bold min-w-[24px]">{i + 1}.</span>
+                                <span>
+                                  {insight.split(/(\d+\.?\d*)/g).map((part, idx) =>
+                                    /\d+\.?\d*/.test(part) ? (
+                                      <span key={idx} className="text-wicky-green font-bold">{part}</span>
+                                    ) : part
+                                  )}
+                                </span>
+                              </motion.li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div>
+                          <h4 className="text-success font-semibold mb-2 flex items-center gap-2">
+                            <TrendingUp className="w-4 h-4" />
+                            Strengths
+                          </h4>
+                          <ul className="space-y-1">
+                            {playerData.strengths?.map((strength: string, i: number) => (
+                              <motion.li 
+                                key={i} 
+                                className="text-sm flex items-start gap-3"
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: i * 0.1 }}
+                              >
+                                <span className="text-success min-w-[24px]">✓</span>
+                                <span>
+                                  {strength.split(/(\d+\.?\d*)/g).map((part, idx) =>
+                                    /\d+\.?\d*/.test(part) ? (
+                                      <span key={idx} className="text-wicky-green font-bold">{part}</span>
+                                    ) : part
+                                  )}
+                                </span>
+                              </motion.li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div>
+                          <h4 className="text-warning font-semibold mb-2 flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4" />
+                            Weaknesses
+                          </h4>
+                          <ul className="space-y-1">
+                            {playerData.weaknesses?.map((weakness: string, i: number) => (
+                              <motion.li 
+                                key={i} 
+                                className="text-sm flex items-start gap-3"
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: i * 0.1 }}
+                              >
+                                <span className="text-warning min-w-[24px]">⚠</span>
+                                <span>
+                                  {weakness.split(/(\d+\.?\d*)/g).map((part, idx) =>
+                                    /\d+\.?\d*/.test(part) ? (
+                                      <span key={idx} className="text-wicky-green font-bold">{part}</span>
+                                    ) : part
+                                  )}
+                                </span>
+                              </motion.li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    </BentoCard>
+                  );
+                })}
               </div>
-            </motion.div>
-          </BentoCard>
-        </div>
+            )}
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-[50vh] text-muted-foreground">
+            <p>Select teams and players, then click "Generate Insights" to see the analysis.</p>
+          </div>
+        )}
       </div>
     </SportLayout>
   );
