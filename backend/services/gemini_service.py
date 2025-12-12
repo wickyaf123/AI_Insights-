@@ -1,10 +1,12 @@
 """
 Gemini AI service for generating sports insights.
 Handles file uploads, prompt generation, and AI content generation.
+Uses ThreadPoolExecutor for concurrent request handling.
 """
 import os
-import time
+import asyncio
 from typing import List, Dict, Callable, Optional
+from concurrent.futures import ThreadPoolExecutor
 import google.generativeai as genai
 from google.ai.generativelanguage_v1beta.types import File
 
@@ -13,8 +15,23 @@ from config import GEMINI_API_KEY, GEMINI_MODEL, DATA_DIR
 # Configure Gemini
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Initialize model
-model = genai.GenerativeModel(GEMINI_MODEL)
+# Initialize model with JSON response mode
+generation_config = {
+    "temperature": 0.7,
+    "top_p": 0.95,
+    "top_k": 40,
+    "max_output_tokens": 8192,
+    "response_mime_type": "application/json",  # Force JSON output
+}
+
+model = genai.GenerativeModel(
+    GEMINI_MODEL,
+    generation_config=generation_config
+)
+
+# Thread pool for running blocking Gemini API calls
+# This allows multiple users to make concurrent requests
+_executor = ThreadPoolExecutor(max_workers=5)
 
 # Store uploaded file URIs for each sport
 sport_file_uris: Dict[str, List[str]] = {
@@ -66,7 +83,7 @@ def get_sport_file_paths(sport: str) -> List[str]:
 
 async def upload_sport_files(sport: str):
     """
-    Upload CSV files for a sport to Gemini API.
+    Upload CSV files for a sport to Gemini API (async with thread pool).
     
     Args:
         sport: The sport identifier
@@ -85,6 +102,8 @@ async def upload_sport_files(sport: str):
     
     sport_file_uris[sport] = []
     
+    loop = asyncio.get_event_loop()
+    
     for file_path in files:
         print(f"Attempting to upload: {file_path}")
         
@@ -92,30 +111,35 @@ async def upload_sport_files(sport: str):
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
         
-        # Upload file
-        uploaded_file = genai.upload_file(
-            path=file_path,
-            display_name=f"{sport.upper()} - {os.path.basename(file_path)}"
+        # Upload file in thread pool (non-blocking)
+        uploaded_file = await loop.run_in_executor(
+            _executor,
+            lambda p=file_path, d=f"{sport.upper()} - {os.path.basename(file_path)}": genai.upload_file(path=p, display_name=d)
         )
         
         sport_file_uris[sport].append(uploaded_file.uri)
         print(f"Uploaded {sport.upper()}: {uploaded_file.uri}")
     
-    # Wait for files to be active
+    # Wait for files to be active (non-blocking)
     all_active = False
     while not all_active:
         file_states = []
         for uri in sport_file_uris[sport]:
             # Extract file name from URI
             file_name = uri.split('/')[-1]
-            file = genai.get_file(file_name)
+            # Run blocking get_file in thread pool
+            file = await loop.run_in_executor(
+                _executor,
+                genai.get_file,
+                file_name
+            )
             file_states.append(file.state == File.State.ACTIVE)
         
         all_active = all(file_states)
         
         if not all_active:
             print(f"Waiting for {sport.upper()} files to process...")
-            time.sleep(2)
+            await asyncio.sleep(2)  # Non-blocking sleep!
     
     print(f"{sport.upper()} files are active and ready.")
 
@@ -378,6 +402,33 @@ def get_sport_prompt(sport: str, query: dict) -> str:
     ✅ Makes the matchup exciting to watch
     ✅ Backed by real data from the CSV files
 
+    CRITICAL JSON FORMATTING REQUIREMENTS - ABSOLUTELY MANDATORY:
+    
+    ⚠️ OUTPUT ONLY RAW JSON - NO MARKDOWN CODE FENCES
+    ❌ Do NOT wrap your response in ```json or ``` - start directly with {{
+    ❌ Do NOT include any text before or after the JSON object
+    
+    ⚠️ STRING CONTENT RULES:
+    - NEVER use apostrophes or single quotes in strings - write "he is" NOT "he's", "do not" NOT "don't", "cannot" NOT "can't"
+    - NEVER use contractions - spell out all words fully: "they are" NOT "they're", "it is" NOT "it's"
+    - If you need to mention a quote, rephrase without quotes: say "Player X said he was ready" NOT "Player X said 'I am ready'"
+    - Use only standard ASCII characters: letters, numbers, spaces, periods, commas, hyphens, parentheses
+    - NO unicode: NO em-dashes (—), NO smart quotes (" " ' '), NO ellipsis (…), NO special characters
+    
+    ⚠️ JSON STRUCTURE RULES:
+    - Every array MUST have commas between elements (no trailing comma after last element)
+    - Every object MUST have commas between properties (no trailing comma after last property)  
+    - All string values MUST be in double quotes, properly escaped
+    - NO comments allowed in JSON
+    - Test your JSON structure before returning - it MUST parse without errors
+    
+    ⚠️ DEBUGGING: If generating fails, simplify your language - shorter sentences, no complex punctuation
+    
+    CRITICAL: Use EXACT key names as shown below - DO NOT use actual team names as keys!
+    ⚠️ Use "team1" NOT "Lakers" or "{query.get('team1', 'N/A')}"
+    ⚠️ Use "team2" NOT "Mavericks" or "{query.get('team2', 'N/A')}"
+    ⚠️ The JSON structure MUST match exactly as shown below
+    
     OUTPUT FORMAT - Return ONLY valid JSON (no markdown):
     {{
       "players": {{
@@ -1216,7 +1267,7 @@ def get_sport_prompt(sport: str, query: dict) -> str:
 
 async def generate_sport_insights(sport: str, query: dict) -> dict:
     """
-    Generate insights for a sport using Gemini AI.
+    Generate insights for a sport using Gemini AI (async with thread pool).
     
     Args:
         sport: The sport identifier
@@ -1238,8 +1289,12 @@ async def generate_sport_insights(sport: str, query: dict) -> dict:
         # Prepare file references
         file_parts = [genai.get_file(uri.split('/')[-1]) for uri in sport_file_uris[sport]]
         
-        # Generate content with file context
-        response = model.generate_content([*file_parts, prompt])
+        # Generate content with file context in thread pool (non-blocking)
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            _executor,
+            lambda: model.generate_content([*file_parts, prompt])
+        )
         
         text = response.text
         
@@ -1252,6 +1307,60 @@ async def generate_sport_insights(sport: str, query: dict) -> dict:
     except Exception as error:
         print(f"Error generating {sport} insights:", error)
         raise
+
+
+def clean_and_validate_json(text: str) -> str:
+    """
+    Clean and validate JSON text from AI response.
+    Applies fixes for common AI-generated JSON issues.
+    
+    Args:
+        text: Raw text from AI
+        
+    Returns:
+        Cleaned JSON string
+        
+    Raises:
+        json.JSONDecodeError: If JSON is invalid after cleaning
+    """
+    import re
+    
+    # Remove markdown code fences
+    cleaned = re.sub(r'```json\s*', '', text)
+    cleaned = re.sub(r'```\s*', '', cleaned)
+    cleaned = cleaned.strip()
+    
+    # Extract JSON object
+    first_brace = cleaned.find('{')
+    last_brace = cleaned.rfind('}')
+    if first_brace != -1 and last_brace != -1:
+        cleaned = cleaned[first_brace:last_brace + 1]
+    
+    # Fix unicode characters
+    replacements = {
+        '\u2018': "'",  # Left single quote
+        '\u2019': "'",  # Right single quote  
+        '\u201C': '"',  # Left double quote
+        '\u201D': '"',  # Right double quote
+        '\u2013': '-',  # En dash
+        '\u2014': '-',  # Em dash
+        '\u2026': '...', # Ellipsis
+        '\u00A0': ' ',  # Non-breaking space
+    }
+    
+    for old, new in replacements.items():
+        cleaned = cleaned.replace(old, new)
+    
+    # Remove control characters
+    cleaned = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F]', '', cleaned)
+    
+    # Fix trailing commas
+    cleaned = re.sub(r',(\s*[}\]])', r'\1', cleaned)
+    
+    # Validate by parsing
+    json.loads(cleaned)  # This will raise if invalid
+    
+    return cleaned
 
 
 def generate_sport_insights_stream_sync(
@@ -1288,12 +1397,15 @@ def generate_sport_insights_stream_sync(
         
         print(f"Streaming response chunks...")
         chunk_count = 0
+        accumulated_text = ""
+        
         # Stream chunks as they arrive
         for chunk in response:
             try:
                 if chunk.text:
                     chunk_count += 1
                     print(f"Chunk {chunk_count}: {len(chunk.text)} chars")
+                    accumulated_text += chunk.text
                     yield chunk.text
             except ValueError:
                 # Final chunk with finish_reason but no text - safely ignore
@@ -1301,6 +1413,17 @@ def generate_sport_insights_stream_sync(
                 continue
         
         print(f"Streaming complete. Total chunks: {chunk_count}")
+        
+        # Validate the complete JSON after streaming
+        try:
+            print(f"Validating complete JSON ({len(accumulated_text)} chars)...")
+            clean_and_validate_json(accumulated_text)
+            print(f"✅ JSON validation successful")
+        except json.JSONDecodeError as e:
+            print(f"⚠️ WARNING: Generated JSON is invalid: {e}")
+            print(f"First 500 chars: {accumulated_text[:500]}")
+            print(f"Last 500 chars: {accumulated_text[-500:]}")
+            # Don't raise - let frontend try to parse it
     
     except Exception as error:
         print(f"Error generating streaming {sport} insights:", error)
